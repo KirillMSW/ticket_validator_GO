@@ -34,44 +34,23 @@ type Client struct {
 }
 
 const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-const spreadsheetId = "1XbvHbom9ErQKAmDgQOM39KCZsygF9p-IjGsiAYDS-Ik"
 
 var srv *sheets.Service
 
 func main() {
-	ctx := context.Background()
-
-	config := setConfig()
-	client := getClient(config)
-
-	srv = getService(ctx, client)
-
-	// Prints the names and majors of students in a sample spreadsheet:
-	// https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit
-	spreadsheetId := "1XbvHbom9ErQKAmDgQOM39KCZsygF9p-IjGsiAYDS-Ik"
-	readRange := "A:E"
-	resp, err := srv.Spreadsheets.Values.Get(spreadsheetId, readRange).Do()
-	if err != nil {
-		log.Fatalf("Unable to retrieve data from sheet: %v", err)
-	}
-
-	if len(resp.Values) == 0 {
-		fmt.Println("No data found.")
-	} else {
-		fmt.Println("Name, Major:")
-		for _, row := range resp.Values {
-			// Print columns A and E, which correspond to indices 0 and 4.
-			fmt.Printf("%s, %s\n", row[0], row[2])
-		}
-	}
-
+	onStartup()
 	fmt.Println("Begining app")
 	router := gin.Default()
 	router.POST("/api/generate", generate)
 	router.GET("/api/validate", validate)
 	router.Run("localhost:8080")
 }
-
+func onStartup() {
+	ctx := context.Background()
+	config := setConfig()
+	client := getClient(config)
+	srv = getService(ctx, client)
+}
 func generateTicketId(clients []Client) string {
 	rand.Seed(time.Now().UnixNano())
 	generate_again := true
