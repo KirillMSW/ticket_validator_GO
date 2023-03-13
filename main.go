@@ -19,6 +19,7 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 )
 
@@ -43,14 +44,82 @@ func main() {
 	router := gin.Default()
 	router.POST("/api/generate", generate)
 	router.GET("/api/validate", validate)
+	router.POST("/api/checkin", checkin)
 	router.Run("localhost:8080")
 }
+
 func onStartup() {
 	ctx := context.Background()
 	config := setConfig()
-	client := getClient(config)
+	client := getSheetsClient(config)
 	srv = getService(ctx, client)
 }
+
+func getTickets() []Client {
+	jsonFile, err := os.Open("db.json")
+	if err != nil {
+		fmt.Println(err)
+		return nil
+	}
+	fmt.Println("Successfully Opened users.json")
+	defer func(jsonFile *os.File) {
+		err := jsonFile.Close()
+		if err != nil {
+
+		}
+	}(jsonFile)
+	byteValue, _ := ioutil.ReadAll(jsonFile)
+
+	var clients []Client
+	err = json.Unmarshal(byteValue, &clients)
+	if err != nil {
+		fmt.Println(err)
+	}
+	fmt.Println("Successfully unmarshled users.json")
+	return clients
+}
+
+func searchClient(clients []Client, ticket_id string) int {
+	for i, a := range clients {
+		fmt.Printf("%d", i)
+		if a.Ticket_id == ticket_id {
+			return i
+		}
+	}
+	return -1
+}
+
+func addTicket(clients []Client, ticket_id string, people_amount int, name, surname, patronymic, phone, email string) {
+	clients = append(clients, Client{
+		Ticket_id:     ticket_id,
+		People_amount: people_amount,
+		Name:          name,
+		Surname:       surname,
+		Patronymic:    patronymic,
+		Phone:         phone,
+		Email:         email,
+	})
+	result, err := json.Marshal(clients) //Returns the Json encoding of u into the variable result
+	if err != nil {
+		fmt.Println("error", err)
+	}
+	err = os.WriteFile("db.json", result, 0644)
+	if err != nil {
+		fmt.Println(err)
+	}
+}
+
+func writeTickets(clients []Client) {
+	result, err := json.Marshal(clients) //Returns the Json encoding of u into the variable result
+	if err != nil {
+		fmt.Println("error", err)
+	}
+	err = os.WriteFile("db.json", result, 0644)
+	if err != nil {
+		fmt.Println(err)
+	}
+}
+
 func generateTicketId(clients []Client) string {
 	rand.Seed(time.Now().UnixNano())
 	generate_again := true
@@ -62,17 +131,14 @@ func generateTicketId(clients []Client) string {
 			b[i] = letters[rand.Intn(len(letters))]
 		}
 		ticket_id = string(b)
-		for _, a := range clients {
-			if a.Ticket_id == ticket_id {
-				generate_again = true
-			}
+		if searchClient(clients, ticket_id) != -1 {
+			generate_again = true
 		}
 	}
 	return ticket_id
 }
 
 func pushToTables(ticket_id, surname, name, patronymic, phone, email string) {
-
 	readRange := "A:E"
 	resp, err := srv.Spreadsheets.Values.Get(spreadsheetId, readRange).Do()
 	if err != nil {
@@ -115,17 +181,14 @@ func drawTicket(ticket_id, surname, name, patronymic string) {
 		fmt.Println(err)
 	}
 
-	//S := 1000.0
 	dc.SetRGB(1, 1, 1)
 	dc.DrawStringAnchored(ticket_id, 534, 1350, 0.5, 1)
-
 	dc.DrawStringWrapped(name+"\n"+surname+"\n"+patronymic, 534, 1500, 0.5, 0, 1000, 1.25, gg.AlignCenter)
 	dc.Clip()
-	//err = dc.SaveJPG("asdasd.png")
-	//if err != nil {
-	//	fmt.Println(err)
-	//}
-	toimg, _ := os.Create("new.jpg")
+	toimg, err := os.Create("tickets/" + ticket_id + ".jpg")
+	if err != nil {
+		fmt.Println(err)
+	}
 	defer func(toimg *os.File) {
 		err := toimg.Close()
 		if err != nil {
@@ -158,10 +221,7 @@ func setConfig() *oauth2.Config {
 	}
 	return config
 }
-func getClient(config *oauth2.Config) *http.Client {
-	// The file token.json stores the user's access and refresh tokens, and is
-	// created automatically when the authorization flow completes for the first
-	// time.
+func getSheetsClient(config *oauth2.Config) *http.Client {
 	tokFile := "token.json"
 	tok, err := tokenFromFile(tokFile)
 	if err != nil {
@@ -225,44 +285,7 @@ func saveToken(path string, token *oauth2.Token) {
 	}
 }
 
-////// getAlbums responds with the list of all albums as JSON.
-////func getAlbums(c *gin.Context) {
-////	c.IndentedJSON(http.StatusOK, albums)
-////}
-////
-////// postAlbums adds an album from JSON received in the request body.
-////func postAlbums(c *gin.Context) {
-////	var newAlbum album
-////
-////	// Call BindJSON to bind the received JSON to
-////	// newAlbum.
-////	if err := c.BindJSON(&newAlbum); err != nil {
-////		return
-////	}
-////
-////	// Add the new album to the slice.
-////	albums = append(albums, newAlbum)
-////	c.IndentedJSON(http.StatusCreated, newAlbum)
-////}
-//
-//// getAlbumByID locates the album whose ID value matches the id
-//// parameter sent by the client, then returns that album as a response.
-//func getAlbumByID(c *gin.Context) {
-//	id := c.Param("id")
-//
-//	// Loop through the list of albums, looking for
-//	// an album whose ID value matches the parameter.
-//	for _, a := range albums {
-//		if a.ID == id {
-//			c.IndentedJSON(http.StatusOK, a)
-//			return
-//		}
-//	}
-//	c.IndentedJSON(http.StatusNotFound, gin.H{"message": "album not found"})
-//}
-
 func generate(c *gin.Context) {
-
 	people_amount := 1
 	name := c.PostForm("name")
 	surname := c.PostForm("surname")
@@ -270,86 +293,64 @@ func generate(c *gin.Context) {
 	phone := c.PostForm("phone")
 	email := c.PostForm("email")
 
-	fmt.Println(people_amount, name, surname, patronymic, phone, email)
-	//var png []byte
-
-	jsonFile, err := os.Open("db.json")
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	fmt.Println("Successfully Opened users.json")
-	defer func(jsonFile *os.File) {
-		err := jsonFile.Close()
-		if err != nil {
-
-		}
-	}(jsonFile)
-	byteValue, _ := ioutil.ReadAll(jsonFile)
-
-	var clients []Client
-	err = json.Unmarshal(byteValue, &clients)
-	if err != nil {
-		fmt.Println(err)
-	}
-	fmt.Println("Successfully unmarshled users.json")
-
+	clients := getTickets()
 	ticket_id := generateTicketId(clients)
-	clients = append(clients, Client{
-		Ticket_id:     ticket_id,
-		People_amount: 1,
-		Name:          name,
-		Surname:       surname,
-		Patronymic:    patronymic,
-		Phone:         phone,
-		Email:         email,
-	})
-	result, err := json.Marshal(clients) //Returns the Json encoding of u into the variable result
-	if err != nil {
-		fmt.Println("error", err)
-	}
-	err = os.WriteFile("db.json", result, 0644)
-	if err != nil {
-		fmt.Println(err)
-	}
 
+	addTicket(clients, ticket_id, people_amount, name, surname, patronymic, phone, email)
 	go pushToTables(ticket_id, surname, name, patronymic, phone, email)
 	drawTicket(ticket_id, surname, name, patronymic)
 
 	c.Header("Access-Control-Allow-Origin", "*")
-	c.File("new.jpg")
+	c.File("tickets/" + ticket_id + ".jpg")
 
 }
-func validate(c *gin.Context) {
-	id := c.Query("key")
-	fmt.Println(id)
-	jsonFile, err := os.Open("db.json")
+
+func checkin(c *gin.Context) {
+	ticket_id := c.PostForm("ticket_id")
+	people_to_pass, err := strconv.Atoi(c.PostForm("people_to_pass"))
 	if err != nil {
 		fmt.Println(err)
 	}
-	fmt.Println("Successfully Opened users.json")
-	defer func(jsonFile *os.File) {
-		err := jsonFile.Close()
-		if err != nil {
+	clients := getTickets()
+	client_num_id := searchClient(clients, ticket_id)
 
-		}
-	}(jsonFile)
-	byteValue, _ := ioutil.ReadAll(jsonFile)
-
-	var clients []Client
-	err = json.Unmarshal(byteValue, &clients)
-	if err != nil {
-		fmt.Println(err)
-	}
-	fmt.Println("Successfully unmarshled users.json")
-
-	for _, a := range clients {
-		if a.Ticket_id == id {
-			c.Header("Access-Control-Allow-Origin", "*")
-			c.IndentedJSON(http.StatusOK, a)
-			return
-		}
-	}
 	c.Header("Access-Control-Allow-Origin", "*")
-	c.IndentedJSON(http.StatusNotFound, gin.H{})
+	if client_num_id != -1 {
+		clients[client_num_id].People_amount -= people_to_pass
+		writeTickets(clients)
+		c.String(200, "OK")
+	} else {
+		c.String(200, "INVALID")
+	}
+
+}
+
+func validate(c *gin.Context) {
+	ticket_id := c.Query("key")
+
+	clients := getTickets()
+	client_num_id := searchClient(clients, ticket_id)
+
+	c.Header("Access-Control-Allow-Origin", "*")
+	if client_num_id != -1 {
+		client := clients[client_num_id]
+		c.JSON(200, client)
+	} else {
+		c.JSON(200, "{}")
+	}
+}
+
+func void_ticket(c *gin.Context) {
+	ticket_id := c.PostForm("ticket_id")
+	clients := getTickets()
+	client_num_id := searchClient(clients, ticket_id)
+
+	c.Header("Access-Control-Allow-Origin", "*")
+	if client_num_id != -1 {
+		clients[client_num_id].People_amount = -1
+		writeTickets(clients)
+		c.String(200, "OK")
+	} else {
+		c.String(200, "INVALID")
+	}
 }
