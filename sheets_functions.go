@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/spf13/viper"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/option"
@@ -13,8 +12,6 @@ import (
 	"net/http"
 	"os"
 )
-
-var spreadsheetId = fmt.Sprintf("%v", viper.Get("table_url"))
 
 func pushToTables(ticket_id, surname, name, patronymic, phone, email string) {
 	readRange := "A:E"

@@ -125,7 +125,7 @@ func drawTicket(ticket_id, surname, name, patronymic string) {
 
 	dc.SetRGB(1, 1, 1)
 	dc.DrawStringAnchored(ticket_id, 534, 1350, 0.5, 1)
-	dc.DrawStringWrapped(name+"\n"+surname+"\n"+patronymic, 534, 1500, 0.5, 0, 1000, 1.25, gg.AlignCenter)
+	dc.DrawStringWrapped(surname+"\n"+name+"\n"+patronymic, 534, 1500, 0.5, 0, 1000, 1.25, gg.AlignCenter)
 	dc.Clip()
 	toimg, err := os.Create("tickets/" + ticket_id + ".jpg")
 	if err != nil {
