@@ -38,11 +38,6 @@ func main() {
 		fmt.Println(err)
 		return
 	}
-	//client, err := dbGetTicket("kkjk")
-	//if err != nil {
-	//	fmt.Println(err)
-	//}
-	//client.Name = "s"
 	fmt.Println("Begining app")
 	router := gin.Default()
 	router.POST("/api/generate", generate)
@@ -72,8 +67,7 @@ func onStartup() error {
 	return nil
 }
 
-//TODO Check for:
-// font file
+//TODO Check for: font file
 
 func checkFiles() error {
 	if _, err := os.Stat("db.json"); !os.IsNotExist(err) {
@@ -138,10 +132,12 @@ func generate(c *gin.Context) {
 	phone := c.PostForm("phone")
 	email := c.PostForm("email")
 
-	clients := getTickets()
-	ticket_id := generateTicketId(clients)
+	//clients := getTickets()
+	ticket_id := dbGenerateTicketId()
 
-	addTicket(clients, ticket_id, people_amount, name, surname, patronymic, phone, email)
+	dbAddTicket(ticket_id, people_amount, name, surname, patronymic, phone, email)
+
+	//addTicket(clients, ticket_id, people_amount, name, surname, patronymic, phone, email)
 	go pushToTables(ticket_id, surname, name, patronymic, phone, email)
 	drawTicket(ticket_id, surname, name, patronymic)
 
@@ -151,19 +147,26 @@ func generate(c *gin.Context) {
 
 }
 
+// TODO: optimize (unite search and changing)
 func checkin(c *gin.Context) {
 	ticket_id := c.PostForm("ticket_id")
 	people_to_pass, err := strconv.Atoi(c.PostForm("people_to_pass"))
 	if err != nil {
 		fmt.Println(err)
 	}
-	clients := getTickets()
-	client_num_id := searchClient(clients, ticket_id)
 
+	//clients := getTickets()
+	//client_num_id := searchClient(clients, ticket_id)
+
+	client, err := dbGetTicket(ticket_id)
 	c.Header("Access-Control-Allow-Origin", "*")
-	if client_num_id != -1 {
-		clients[client_num_id].People_amount -= people_to_pass
-		writeTickets(clients)
+	if err == nil {
+		//clients[client_num_id].People_amount -= people_to_pass
+		//writeTickets(clients)
+		err = dbUpdatePeopleAmount(client.People_amount-people_to_pass, ticket_id)
+		if err != nil {
+			c.String(200, "INVALID")
+		}
 		go updateStatus(ticket_id, "ИЗРАСХОДОВАН")
 		c.String(200, "OK")
 	} else {
@@ -177,7 +180,11 @@ func validate(c *gin.Context) {
 	client, err := dbGetTicket(ticket_id)
 	c.Header("Access-Control-Allow-Origin", "*")
 	if err != nil {
+		if err.Error() == "No rows" {
+			fmt.Println("aboba")
+		}
 		c.JSON(200, "{}")
+		fmt.Println(err)
 	} else {
 		c.JSON(200, client)
 	}
@@ -185,16 +192,15 @@ func validate(c *gin.Context) {
 
 func void_ticket(c *gin.Context) {
 	ticket_id := c.PostForm("ticket_id")
-	clients := getTickets()
-	client_num_id := searchClient(clients, ticket_id)
+	//clients := getTickets()
+	//client_num_id := searchClient(clients, ticket_id)
 
 	c.Header("Access-Control-Allow-Origin", "*")
-	if client_num_id != -1 {
-		clients[client_num_id].People_amount = -1
-		writeTickets(clients)
-		go updateStatus(ticket_id, "АННУЛИРОВАН")
-		c.String(200, "OK")
-	} else {
+	err := dbUpdatePeopleAmount(-1, ticket_id)
+	if err != nil {
 		c.String(200, "INVALID")
+		return
 	}
+	go updateStatus(ticket_id, "АННУЛИРОВАН")
+	c.String(200, "OK")
 }
