@@ -6,11 +6,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"strconv"
+	"time"
+
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/viper"
 	"google.golang.org/api/sheets/v4"
-	"os"
-	"strconv"
 )
 
 // album represents data about a record album.
@@ -32,7 +34,13 @@ var db *sql.DB
 
 var spreadsheetId string
 
+var channel chan int
+
+var reqMap map[string]*gin.Context
+
 func main() {
+	channel = make(chan int)
+	reqMap = make(map[string]*gin.Context)
 	err := onStartup()
 	if err != nil {
 		fmt.Println(err)
@@ -42,6 +50,10 @@ func main() {
 	router := gin.Default()
 	router.POST("/api/generate", generate)
 	router.GET("/api/validate", validate)
+	router.GET("/api/waiter", waiter)
+	router.GET("/api/terminal_login", terminal_login)
+	router.GET("/api/terminal_checkin", terminal_checkin)
+	router.POST("/api/later", later)
 	router.POST("/api/checkin", checkin)
 	router.POST("/api/void", void_ticket)
 	router.Run("localhost:8080")
@@ -190,6 +202,41 @@ func validate(c *gin.Context) {
 	}
 }
 
+func terminal_login(c *gin.Context) {
+	//TODO: решить проблему с повторным нажатием
+	// можно если запрос уже был, отправить респонз с особым кодом, на который эспруинка ничего не выведет например 409
+	oldReq, unhandled := reqMap[c.Query("id")]
+	if unhandled {
+		oldReq.String(409, "Got another request")
+	}
+	reqMap[c.Query("id")] = c
+	//clients := getTickets()
+	//client_num_id := searchClient(clients, ticket_id)
+	_, unhandled = reqMap[c.Query("id")]
+	count:=0
+	for unhandled && count<200{
+		count++
+		_, unhandled = reqMap[c.Query("id")]
+		time.Sleep(100*time.Millisecond)
+	}
+	if unhandled{
+		c.String(408, "TIMEOUT")
+		delete(reqMap, c.Query("terminal_id"))
+	}
+
+}
+
+func terminal_checkin(c *gin.Context) {
+
+	terminal_req, found := reqMap[c.Query("terminal_id")]
+	if found {
+		terminal_req.String(201, "OK")
+		delete(reqMap, c.Query("terminal_id"))
+	}
+	c.String(200, "OK")
+
+}
+
 func void_ticket(c *gin.Context) {
 	ticket_id := c.PostForm("ticket_id")
 	//clients := getTickets()
@@ -202,5 +249,16 @@ func void_ticket(c *gin.Context) {
 		return
 	}
 	go updateStatus(ticket_id, "АННУЛИРОВАН")
+	c.String(200, "OK")
+}
+
+func waiter(c *gin.Context) {
+	a := <-channel
+	fmt.Println(a)
+	c.String(200, "OK")
+}
+
+func later(c *gin.Context) {
+	channel <- 4
 	c.String(200, "OK")
 }
